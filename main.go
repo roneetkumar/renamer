@@ -1,79 +1,63 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
-	"strings"
+	"regexp"
 )
 
-type file struct {
-	path, name string
-}
+var re = regexp.MustCompile("^(.+?) ([0-9]{4}) [(]([0-9]+) of ([0-9]+)[)][.](.+?)$")
+
+var replaceStr = "$2 - $1 - $3 of $4.$5"
 
 func main() {
+	var dry bool
+	flag.BoolVar(&dry, "dry", true, "is it a dry run")
+	flag.Parse()
 
-	dir := "sample"
+	walkDir := "sample"
 
-	var toRename []file
+	var toRename []string
 
-	filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
-
+	filepath.Walk(walkDir, func(path string, info os.FileInfo, err error) error {
 		if info.IsDir() {
 			return nil
 		}
-
 		if _, err := match(info.Name()); err == nil {
-			toRename = append(toRename, file{
-				name: info.Name(),
-				path: path,
-			})
+			toRename = append(toRename, path)
 		}
 		return nil
 	})
 
-	for _, f := range toRename {
+	for _, oldPath := range toRename {
+		dir := filepath.Dir(oldPath)
+		filename := filepath.Base(oldPath)
+		newfilename, _ := match(filename)
+		newPath := filepath.Join(dir, newfilename)
+		fmt.Printf("mv %s => %s\n", oldPath, newfilename)
 
-		fmt.Printf("%q\n", f)
-	}
-
-	for _, orig := range toRename {
-
-		var n file
-		var err error
-
-		n.name, err = match(orig.name)
-		if err != nil {
-			fmt.Println("Error matching: ", orig.path, err.Error())
-		}
-
-		n.path = filepath.Join(dir, n.name)
-		fmt.Printf("mv %s => %s\n", orig.path, n.path)
-
-		err = os.Rename(orig.path, n.path)
-
-		if err != nil {
-			fmt.Println("Error renaming: ", orig.path, err.Error())
+		if !dry {
+			err := os.Rename(oldPath, newPath)
+			if err != nil {
+				fmt.Println("Error renaming: ", oldPath, newPath, err.Error())
+			}
 		}
 	}
 }
 
-//  match return the new file name, or err
+type matchResult struct {
+	base string
+	ext  string
+}
+
 func match(filename string) (string, error) {
-
-	parts := strings.Split(filename, ".")
-	ext := parts[len(parts)-1]
-
-	temp := strings.Join(parts[0:len(parts)-1], ".")
-
-	parts = strings.Split(temp, "_")
-
-	name := strings.Join(parts[0:len(parts)-1], "_")
-
-	number, err := strconv.Atoi(parts[len(parts)-1])
-	if err != nil {
+	if !re.MatchString(filename) {
 		return "", fmt.Errorf("%s didn't matched our pattern", filename)
+
 	}
-	return fmt.Sprintf("%s - %d.%s", strings.Title(name), number, ext), nil
+
+	tmp := re.ReplaceAllString(filename, replaceStr)
+	return tmp, nil
 }
