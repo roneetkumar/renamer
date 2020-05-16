@@ -2,59 +2,65 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 )
 
+type file struct {
+	path, name string
+}
+
 func main() {
 
-	dir := "./sample"
+	dir := "sample"
 
-	files, err := ioutil.ReadDir("./sample")
+	var toRename []file
 
-	if err != nil {
-		panic(err)
+	filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+
+		if info.IsDir() {
+			return nil
+		}
+
+		if _, err := match(info.Name()); err == nil {
+			toRename = append(toRename, file{
+				name: info.Name(),
+				path: path,
+			})
+		}
+		return nil
+	})
+
+	for _, f := range toRename {
+
+		fmt.Printf("%q\n", f)
 	}
 
-	count := 0
+	for _, orig := range toRename {
 
-	var toRename []string
+		var n file
+		var err error
 
-	for _, file := range files {
-		if file.IsDir() {
-		} else {
-			_, err := match(file.Name(), 0)
-			if err == nil {
-				count++
-				toRename = append(toRename, file.Name())
-			}
-		}
-	}
-
-	for _, origfilename := range toRename {
-
-		orig := filepath.Join(dir, origfilename)
-		newfilename, err := match(origfilename, count)
+		n.name, err = match(orig.name)
 		if err != nil {
-			panic(err)
+			fmt.Println("Error matching: ", orig.path, err.Error())
 		}
 
-		newpath := filepath.Join(dir, newfilename)
+		n.path = filepath.Join(dir, n.name)
+		fmt.Printf("mv %s => %s\n", orig.path, n.path)
 
-		err = os.Rename(orig, newpath)
-		fmt.Printf("mv %s => %s\n", orig, newpath)
+		err = os.Rename(orig.path, n.path)
+
 		if err != nil {
-			panic(err)
+			fmt.Println("Error renaming: ", orig.path, err.Error())
 		}
-
 	}
 }
 
 //  match return the new file name, or err
-func match(filename string, total int) (string, error) {
+func match(filename string) (string, error) {
 
 	parts := strings.Split(filename, ".")
 	ext := parts[len(parts)-1]
@@ -69,5 +75,5 @@ func match(filename string, total int) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("%s didn't matched our pattern", filename)
 	}
-	return fmt.Sprintf("%s - %d of %d.%s", strings.Title(name), number, total, ext), nil
+	return fmt.Sprintf("%s - %d.%s", strings.Title(name), number, ext), nil
 }
